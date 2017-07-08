@@ -113,7 +113,7 @@ func main() {
 	writer.Write([]string{"total_messages", "elapsed_seconds", "messages_per_second"})
 	writer.Flush()
 	for messageSize := minNumber; messageSize <= maxNumber; messageSize = messageSize * mulitplier {
-		go func() {
+		func() {
 			var err error
 			db, err = sql.Open("postgres", dsn)
 			if err != nil {
