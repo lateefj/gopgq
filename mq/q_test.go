@@ -56,36 +56,41 @@ func TestPublishConsume(t *testing.T) {
 		}
 	}()
 
-	topic := "foo"
-	messages := []*Message{&Message{Topic: topic, Payload: []byte("test")}}
+	messages := []*Message{&Message{Payload: []byte("test")}}
 	err = mq.Publish(messages)
 	if err != nil {
 		t.Fatalf("Failed to publish %s", err)
 	}
 	size := len(messages)
-	recipts := make(chan *MessageRecipt)
-	consumedMessages, err := mq.Consumer(topic, size, recipts)
+	recipts := make([]*MessageRecipt, size)
+	consumedMessages, err := mq.ConsumeBatch(size)
 	if err != nil {
 		t.Fatalf("Failed to consumer %s", err)
 	}
 	count := 0
-	for _, m := range consumedMessages {
+	for j, m := range consumedMessages {
 		count += 1
-		recipts <- &MessageRecipt{Id: m.Id, Success: true}
+		recipts[j] = &MessageRecipt{Id: m.Id, Success: true}
 	}
-	close(recipts)
+	mq.Commit(recipts)
 	if count != size {
 		t.Errorf("Expected %d message however got %d", size, count)
+	}
+	consumedMessages, err = mq.ConsumeBatch(size)
+	if err != nil {
+		t.Fatalf("Failed to consumer %s", err)
+	}
+	if len(consumedMessages) != 0 {
+		t.Errorf("Failed to have consumed message of 0 was %d", len(consumedMessages))
 	}
 }
 
 func publishConsumeSize(b *testing.B, size int) {
 	b.ReportAllocs()
 
-	topic := "test"
 	messages := make([]*Message, size)
 	for i := 0; i < size; i++ {
-		messages[i] = &Message{Topic: topic, Payload: []byte("Testing load capacity of a message queue system written in go using Postgresql RDBMS")}
+		messages[i] = &Message{Payload: []byte("Testing load capacity of a message queue system written in go using Postgresql RDBMS")}
 	}
 
 	mq := setup()
@@ -104,16 +109,16 @@ func publishConsumeSize(b *testing.B, size int) {
 		if err != nil {
 			b.Fatalf("Failed to publish %s", err)
 		}
-		recipts := make(chan *MessageRecipt, size)
-		consumedMessages, err := mq.Consumer(topic, size, recipts)
+		recipts := make([]*MessageRecipt, size)
+		consumedMessages, err := mq.ConsumeBatch(size)
 		if err != nil {
 			b.Fatalf("Failed to consumer %s", err)
 		}
-		for _, m := range consumedMessages {
+		for j, m := range consumedMessages {
 			b.SetBytes(int64(len(m.Payload)))
-			recipts <- &MessageRecipt{Id: m.Id, Success: true}
+			recipts[j] = &MessageRecipt{Id: m.Id, Success: true}
 		}
-		close(recipts)
+		mq.Commit(recipts)
 	}
 }
 
