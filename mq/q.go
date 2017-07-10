@@ -165,18 +165,19 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*ConsumerMessage, error) {
 	return ms, nil
 }
 
-// Consumer ... Creates a stream of consumption
-func (p *Pgmq) Consume(size int, messages chan []*ConsumerMessage, pause time.Duration) {
+// Stream ... Creates a stream of consumption
+func (p *Pgmq) Stream(size int, messages chan []*ConsumerMessage, pause time.Duration) {
+	defer close(messages)
 	for {
 
 		// Consume until there are no more messages or there is an error
 		// No messages there was an error or time to exit
 		for {
-			ms, err := p.ConsumeBatch(size)
-			// If exit then
 			if p.Exit() {
 				return
 			}
+			ms, err := p.ConsumeBatch(size)
+			// If exit then
 			if len(ms) == 0 || err != nil {
 				break
 			}

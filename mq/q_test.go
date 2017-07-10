@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq" // Postgresql Driver
 )
@@ -77,6 +78,53 @@ func TestPublishConsume(t *testing.T) {
 		t.Errorf("Expected %d message however got %d", size, count)
 	}
 	consumedMessages, err = mq.ConsumeBatch(size)
+	if err != nil {
+		t.Fatalf("Failed to consumer %s", err)
+	}
+	if len(consumedMessages) != 0 {
+		t.Errorf("Failed to have consumed message of 0 was %d", len(consumedMessages))
+	}
+}
+func TestStream(t *testing.T) {
+	// t.Fatal("not implemented")
+	mq := setup()
+	err := mq.CreateSchema()
+	if err != nil {
+		t.Fatalf("Could not create schema %s", err)
+	}
+	defer func() {
+		err := mq.DropSchema()
+		if err != nil {
+			t.Fatalf("Could not drop schema %s", err)
+		}
+	}()
+
+	messages := []*Message{&Message{Payload: []byte("test")}}
+	err = mq.Publish(messages)
+	if err != nil {
+		t.Fatalf("Failed to publish %s", err)
+	}
+	size := len(messages)
+	stream := make(chan []*ConsumerMessage, 0)
+	pause := 10 * time.Millisecond
+	go mq.Stream(size, stream, pause)
+	count := 0
+	recipts := make([]*MessageRecipt, size)
+	for group := range stream {
+		for _, m := range group {
+			recipts[count] = &MessageRecipt{Id: m.Id, Success: true}
+			count += 1
+		}
+		if count >= size {
+			mq.Exit()
+			close(stream)
+		}
+	}
+	if count != size {
+		t.Errorf("Expected %d message however got %d", size, count)
+	}
+	mq.Commit(recipts)
+	consumedMessages, err := mq.ConsumeBatch(size)
 	if err != nil {
 		t.Fatalf("Failed to consumer %s", err)
 	}
