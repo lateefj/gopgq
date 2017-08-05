@@ -1,10 +1,12 @@
-package mq
+package pgmq
 
 import (
 	"database/sql"
 	"fmt"
 	"sync"
 	"time"
+
+	mqexp "github.com/lateefj/gopgq"
 
 	pq "github.com/lib/pq" // Postgresql Driver
 )
@@ -23,23 +25,6 @@ var dropScrema = `
 DROP TABLE IF EXISTS %sq;
 DROP SEQUENCE IF EXISTS %sq_id_seq;
 `
-
-// Message ... Basic message
-type Message struct {
-	Payload []byte
-}
-
-// ConsumerMessage ... Message for a consumer
-type ConsumerMessage struct {
-	Message
-	Id int64
-}
-
-// MessageRecipt ... Recipt for handling message
-type MessageRecipt struct {
-	Id      int64
-	Success bool
-}
 
 // Pgmq ... Structure for holding message
 type Pgmq struct {
@@ -82,11 +67,12 @@ func (p *Pgmq) Exit() bool {
 }
 
 // Publish ... This pushes a list of messages into the DB
-func (p *Pgmq) Publish(messages []*Message) error {
+func (p *Pgmq) Publish(messages []*mqexp.Message) error {
 
 	txn, err := p.DB.Begin()
 	defer txn.Commit()
 	if err != nil {
+		fmt.Printf("Error with %s\n", err)
 		return err
 	}
 
@@ -104,7 +90,7 @@ func (p *Pgmq) Publish(messages []*Message) error {
 	return err
 }
 
-func (p *Pgmq) Commit(recipts []*MessageRecipt) error {
+func (p *Pgmq) Commit(recipts []*mqexp.Receipt) error {
 	deleteQuery := fmt.Sprintf("DELETE FROM %sq WHERE id = ANY($1)", p.Prefix)
 	deleteStmt, err := p.DB.Prepare(deleteQuery)
 	if err != nil {
@@ -122,8 +108,8 @@ func (p *Pgmq) Commit(recipts []*MessageRecipt) error {
 }
 
 // ConsumeBatch ... This consumes a number of messages up to the limit
-func (p *Pgmq) ConsumeBatch(size int) ([]*ConsumerMessage, error) {
-	ms := make([]*ConsumerMessage, 0)
+func (p *Pgmq) ConsumeBatch(size int) ([]*mqexp.ConsumerMessage, error) {
+	ms := make([]*mqexp.ConsumerMessage, 0)
 	// Query any messages that have not been checked out
 	q := fmt.Sprintf("UPDATE %sq SET checkout = now() WHERE id IN (SELECT id FROM %sq WHERE checkout IS null ", p.Prefix, p.Prefix)
 	// If there is a TTL then checkout messages that have expired
@@ -131,6 +117,7 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*ConsumerMessage, error) {
 		q = fmt.Sprintf("OR checkout + $2 > now()")
 	}
 	q = fmt.Sprintf("%s ORDER BY checkout ASC NULLS FIRST, timestamp ASC FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, payload;", q)
+	//fmt.Printf("%s\n", q)
 	txn, err := p.DB.Begin()
 	if err != nil {
 		return ms, err
@@ -160,13 +147,13 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*ConsumerMessage, error) {
 		var id int64
 		var payload []byte
 		rows.Scan(&id, &payload)
-		ms = append(ms, &ConsumerMessage{Message: Message{Payload: payload}, Id: id})
+		ms = append(ms, &mqexp.ConsumerMessage{Message: mqexp.Message{Payload: payload}, Id: id})
 	}
 	return ms, nil
 }
 
 // Stream ... Creates a stream of consumption
-func (p *Pgmq) Stream(size int, messages chan []*ConsumerMessage, pause time.Duration) {
+func (p *Pgmq) Stream(size int, messages chan []*mqexp.ConsumerMessage, pause time.Duration) {
 	defer close(messages)
 	for {
 

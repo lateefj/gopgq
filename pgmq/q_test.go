@@ -1,4 +1,4 @@
-package mq
+package pgmq
 
 import (
 	"database/sql"
@@ -85,6 +85,7 @@ func TestPublishConsume(t *testing.T) {
 		t.Errorf("Failed to have consumed message of 0 was %d", len(consumedMessages))
 	}
 }
+
 func TestStream(t *testing.T) {
 	// t.Fatal("not implemented")
 	mq := setup()
