@@ -6,8 +6,7 @@ import (
 	"sync"
 	"time"
 
-	mqexp "github.com/lateefj/gopgq"
-
+	"github.com/lateefj/gq"
 	pq "github.com/lib/pq" // Postgresql Driver
 )
 
@@ -67,7 +66,7 @@ func (p *Pgmq) Exit() bool {
 }
 
 // Publish ... This pushes a list of messages into the DB
-func (p *Pgmq) Publish(messages []*mqexp.Message) error {
+func (p *Pgmq) Publish(messages []*gq.Message) error {
 
 	txn, err := p.DB.Begin()
 	defer txn.Commit()
@@ -90,7 +89,7 @@ func (p *Pgmq) Publish(messages []*mqexp.Message) error {
 	return err
 }
 
-func (p *Pgmq) Commit(recipts []*mqexp.Receipt) error {
+func (p *Pgmq) Commit(recipts []*gq.Receipt) error {
 	deleteQuery := fmt.Sprintf("DELETE FROM %sq WHERE id = ANY($1)", p.Prefix)
 	deleteStmt, err := p.DB.Prepare(deleteQuery)
 	if err != nil {
@@ -108,8 +107,8 @@ func (p *Pgmq) Commit(recipts []*mqexp.Receipt) error {
 }
 
 // ConsumeBatch ... This consumes a number of messages up to the limit
-func (p *Pgmq) ConsumeBatch(size int) ([]*mqexp.ConsumerMessage, error) {
-	ms := make([]*mqexp.ConsumerMessage, 0)
+func (p *Pgmq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
+	ms := make([]*gq.ConsumerMessage, 0)
 	// Query any messages that have not been checked out
 	q := fmt.Sprintf("UPDATE %sq SET checkout = now() WHERE id IN (SELECT id FROM %sq WHERE checkout IS null ", p.Prefix, p.Prefix)
 	// If there is a TTL then checkout messages that have expired
@@ -147,13 +146,13 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*mqexp.ConsumerMessage, error) {
 		var id int64
 		var payload []byte
 		rows.Scan(&id, &payload)
-		ms = append(ms, &mqexp.ConsumerMessage{Message: mqexp.Message{Payload: payload}, Id: id})
+		ms = append(ms, &gq.ConsumerMessage{Message: gq.Message{Payload: payload}, Id: id})
 	}
 	return ms, nil
 }
 
 // Stream ... Creates a stream of consumption
-func (p *Pgmq) Stream(size int, messages chan []*mqexp.ConsumerMessage, pause time.Duration) {
+func (p *Pgmq) Stream(size int, messages chan []*gq.ConsumerMessage, pause time.Duration) {
 	defer close(messages)
 	for {
 

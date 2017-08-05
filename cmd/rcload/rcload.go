@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	mqexp "github.com/lateefj/gopgq"
-	"github.com/lateefj/gopgq/pgmq"
+	"github.com/lateefj/gq"
+	"github.com/lateefj/gq/pgmq"
 )
 
 const (
@@ -121,9 +121,9 @@ func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]
 					//fmt.Printf("Producer %d Total Produced %d\n", producerNumber, atomic.LoadInt32(&totalProduced))
 					return
 				}
-				tmp := make([]*mqexp.Message, messageSize)
+				tmp := make([]*gq.Message, messageSize)
 				for j, m := range ms {
-					tmp[j] = &mqexp.Message{Payload: m}
+					tmp[j] = &gq.Message{Payload: m}
 				}
 				err := q.Publish(tmp)
 				// Only increment the counter if the publish was successful
@@ -150,7 +150,7 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 			defer db.Close()
 			q := pgmq.NewPgmq(db, topic)
 
-			stream := make(chan []*mqexp.ConsumerMessage, messageSize)
+			stream := make(chan []*gq.ConsumerMessage, messageSize)
 			go q.Stream(messageSize, stream, 10*time.Millisecond)
 			for {
 				select {
@@ -160,9 +160,9 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 						return
 					}
 					//fmt.Printf("Total consumed %d\r", status.consumedCount())
-					receipts := make([]*mqexp.Receipt, len(consumedMessages))
+					receipts := make([]*gq.Receipt, len(consumedMessages))
 					for i, m := range consumedMessages {
-						receipts[i] = &mqexp.Receipt{Id: m.Id, Success: true}
+						receipts[i] = &gq.Receipt{Id: m.Id, Success: true}
 						status.incConsumed()
 					}
 					q.Commit(receipts)
