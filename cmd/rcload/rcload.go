@@ -15,6 +15,8 @@ import (
 
 	"github.com/lateefj/gq"
 	"github.com/lateefj/gq/pgmq"
+	_ "github.com/lib/pq"           // Postgresql Driver
+	_ "github.com/mattn/go-sqlite3" // Sqlite3 Driver
 )
 
 const (
@@ -22,18 +24,21 @@ const (
 )
 
 var (
-	producerSize int
-	consumerSize int
-	dsn          string
-	maxConn      int
-	minNumber    int
-	maxNumber    int
-	mulitplier   int
-	outPath      string
-	inPath       string
-	outFile      *os.File
-	inFile       *os.File
-	status       *Status
+	producerSize     int
+	consumerSize     int
+	dsn              string
+	storageType      string
+	maxConn          int
+	minNumber        int
+	maxNumber        int
+	mulitplier       int
+	outPath          string
+	inPath           string
+	outFile          *os.File
+	inFile           *os.File
+	status           *Status
+	pgDefaultDsn     string
+	sqliteDefaultDsn string
 )
 
 type Status struct {
@@ -89,10 +94,12 @@ func (s *Status) finishedConsuming() {
 
 func init() {
 	user := os.Getenv("USER")
-	defaultDsn := fmt.Sprintf("postgres://%s:@localhost/pgmq?sslmode=disable", user)
+	pgDefaultDsn = fmt.Sprintf("postgres://%s:@localhost/pgmq?sslmode=disable", user)
+	sqliteDefaultDsn = "/tmp/_gq_test.db"
+	flag.StringVar(&storageType, "type", "sqlite3", "Data storage type defaults to 'sqlite3' and 'postgres' is also an option")
 	flag.IntVar(&producerSize, "prod", runtime.NumCPU(), "producers")
 	flag.IntVar(&consumerSize, "cons", runtime.NumCPU(), "consumers")
-	flag.StringVar(&dsn, "dsn", defaultDsn, fmt.Sprintf("database connection info example %s", defaultDsn))
+	flag.StringVar(&dsn, "dsn", "", fmt.Sprintf("Database connection info pg example %s and sqlite example %s", pgDefaultDsn, sqliteDefaultDsn))
 	flag.IntVar(&maxConn, "conn", 100, "max database connections")
 	flag.IntVar(&maxNumber, "maxnumb", 1000, "max number of messages to batch")
 	flag.IntVar(&minNumber, "minnumb", 1, "min number of messages to batch")
@@ -100,9 +107,28 @@ func init() {
 	flag.StringVar(&outPath, "out", "", "file to output default to stdout")
 	flag.StringVar(&inPath, "in", "", "file to input default to stdin")
 }
+
 func db() (*sql.DB, error) {
-	return sql.Open("postgres", dsn)
+	d := dsn
+	if storageType == "sqlite3" {
+		if dsn == "" {
+			d = sqliteDefaultDsn
+		}
+	}
+
+	if storageType == "pg" {
+		if dsn == "" {
+			d = sqliteDefaultDsn
+		}
+	}
+
+	return conndb(storageType, d)
 }
+
+func conndb(t, d string) (*sql.DB, error) {
+	return sql.Open(t, d)
+}
+
 func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]byte) {
 	for i := 0; i < size; i++ {
 		wg.Add(1)
