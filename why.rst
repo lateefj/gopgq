@@ -14,6 +14,11 @@ Why benchmark message queues using SQL databases isn't that a big no no? In the 
 In general I have found most web software has a database some place to store state. Postgresql is usually what I for production systems (Prototyping I usually recommend a document store like Mongo or redis). Anyway since Postgresql is a well understand easy to run service I started to wonder
 
 
+Exactly Once
+------------
+
+One of the motivations was after reading `Confluent achieves Holy Grail of exactly once delivery on Kafka messaging service <https://techcrunch.com/2017/06/30/confluent-achieves-holy-grail-of-exactly-once-delivery-on-kafka-messaging-service/>`_ it got me thinking. There is a lot of hand waving around "semantics" because this has clarified a bit `You Cannot Have Exactly-Once Delivery Redux <http://bravenewgeek.com/you-cannot-have-exactly-once-delivery-redux/>`_. One does not simply run Kafka_ it involves all manner of challenges. Postgresql has pretty good data guarantees maybe an experiment to find out message queue capacity with good API that can provide very fine grained delivery mechanism. 
+
 .. _Kafka: https://kafka.apache.org/
 
 

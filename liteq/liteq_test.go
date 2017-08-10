@@ -1,4 +1,4 @@
-package pgmq
+package liteq
 
 import (
 	"database/sql"
@@ -9,26 +9,29 @@ import (
 	"time"
 
 	"github.com/lateefj/gq"
-	_ "github.com/lib/pq" // Postgresql Driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var db *sql.DB
 
+const (
+	testPath = "/tmp/gq_liteq_test.db"
+)
+
 func init() {
-	user := os.Getenv("USER")
 	var err error
-	db, err = sql.Open("postgres", fmt.Sprintf("postgres://%s:@localhost/pgmq?sslmode=disable", user))
+	os.Remove(testPath)
+
+	db, err = sql.Open("sqlite3", testPath)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
-	db.SetMaxOpenConns(8)
 }
 
-func setup() *Pgmq {
-	return NewPgmq(db, "test_")
+func setup() *Liteq {
+	return NewLiteq(db, "test_")
 }
-func cleanup(mq *Pgmq) {
+func cleanup(mq *Liteq) {
 	mq.DropSchema()
 }
 func TestSchema(t *testing.T) {
@@ -44,19 +47,14 @@ func TestSchema(t *testing.T) {
 	}
 
 }
+
 func TestPublishConsume(t *testing.T) {
-	// t.Fatal("not implemented")
 	mq := setup()
 	err := mq.CreateSchema()
 	if err != nil {
 		t.Fatalf("Could not create schema %s", err)
 	}
-	defer func() {
-		err := mq.DropSchema()
-		if err != nil {
-			t.Fatalf("Could not drop schema %s", err)
-		}
-	}()
+	defer cleanup(mq)
 
 	messages := []*gq.Message{&gq.Message{Payload: []byte("test")}}
 	err = mq.Publish(messages)
@@ -69,6 +67,7 @@ func TestPublishConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to consumer %s", err)
 	}
+	fmt.Printf("Returned %d messages \n", len(consumedMessages))
 	count := 0
 	for j, m := range consumedMessages {
 		count += 1
