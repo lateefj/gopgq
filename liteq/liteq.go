@@ -37,15 +37,15 @@ func NewLiteq(db *sql.DB, prefix string) *Liteq {
 	return &Liteq{DB: db, Prefix: prefix, Ttl: 0 * time.Millisecond, exit: false, Mutex: &sync.RWMutex{}}
 }
 
-// CreateSchema ... builds any required tables
-func (l *Liteq) CreateSchema() error {
+// Create ... builds any required tables
+func (l *Liteq) Create() error {
 	s := fmt.Sprintf(createSchema, l.Prefix, l.Prefix, l.Prefix)
 	_, err := l.DB.Exec(s)
 	return err
 }
 
-// DropSchema ... removes any tables
-func (l *Liteq) DropSchema() error {
+// Destroy ... removes any tables
+func (l *Liteq) Destroy() error {
 	s := fmt.Sprintf(dropScrema, l.Prefix)
 	_, err := l.DB.Exec(s)
 	return err

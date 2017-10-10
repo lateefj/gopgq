@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lateefj/gq"
+	"github.com/lateefj/gq/liteq"
 	"github.com/lateefj/gq/pgmq"
 	_ "github.com/lib/pq"           // Postgresql Driver
 	_ "github.com/mattn/go-sqlite3" // Sqlite3 Driver
@@ -97,8 +98,8 @@ func init() {
 	pgDefaultDsn = fmt.Sprintf("postgres://%s:@localhost/pgmq?sslmode=disable", user)
 	sqliteDefaultDsn = "/tmp/_gq_test.db"
 	flag.StringVar(&storageType, "type", "sqlite3", "Data storage type defaults to 'sqlite3' and 'postgres' is also an option")
-	flag.IntVar(&producerSize, "prod", runtime.NumCPU(), "producers")
-	flag.IntVar(&consumerSize, "cons", runtime.NumCPU(), "consumers")
+	flag.IntVar(&producerSize, "prod", runtime.NumCPU()/2, "producers")
+	flag.IntVar(&consumerSize, "cons", runtime.NumCPU()/2, "consumers")
 	flag.StringVar(&dsn, "dsn", "", fmt.Sprintf("Database connection info pg example %s and sqlite example %s", pgDefaultDsn, sqliteDefaultDsn))
 	flag.IntVar(&maxConn, "conn", 100, "max database connections")
 	flag.IntVar(&maxNumber, "maxnumb", 1000, "max number of messages to batch")
@@ -129,6 +130,12 @@ func conndb(t, d string) (*sql.DB, error) {
 	return sql.Open(t, d)
 }
 
+func newmq(db *sql.DB) gq.MQ {
+	if storageType == "pg" {
+		return pgmq.NewPgmq(db, topic)
+	}
+	return liteq.NewLiteq(db, topic)
+}
 func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]byte) {
 	for i := 0; i < size; i++ {
 		wg.Add(1)
@@ -140,7 +147,7 @@ func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]
 				return
 			}
 			defer db.Close()
-			q := pgmq.NewPgmq(db, topic)
+			q := newmq(db)
 			for {
 				ms, more := <-comments
 				if !more {
@@ -174,7 +181,7 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 				return
 			}
 			defer db.Close()
-			q := pgmq.NewPgmq(db, topic)
+			q := newmq(db)
 
 			stream := make(chan []*gq.ConsumerMessage, messageSize)
 			go q.Stream(messageSize, stream, 10*time.Millisecond)
@@ -185,7 +192,7 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 						//fmt.Printf("Total consumer %d consumed %d\n", id, status.consumedCount())
 						return
 					}
-					//fmt.Printf("Total consumed %d\r", status.consumedCount())
+					fmt.Printf("Total consumed %d\r", status.consumedCount())
 					receipts := make([]*gq.Receipt, len(consumedMessages))
 					for i, m := range consumedMessages {
 						receipts[i] = &gq.Receipt{Id: m.Id, Success: true}
@@ -248,12 +255,13 @@ func main() {
 			db.SetMaxOpenConns(maxConn)
 
 			// Initialize the database stuff
-			q := pgmq.NewPgmq(db, topic)
-			q.DropSchema()
-			q.CreateSchema()
+			q := newmq(db)
+			q.Destroy()
+
+			q.Create()
 
 			// Destroy when done
-			defer q.DropSchema()
+			defer q.Destroy()
 			// Get consumers started
 			var consumerWg sync.WaitGroup
 			consumerStart := time.Now()
@@ -269,6 +277,10 @@ func main() {
 			// Buffer for comments
 			comments := make([][]byte, messageSize)
 			scanner := bufio.NewScanner(inFile)
+			// For really large files this seems to be a thing
+			// Basically this creates a much larger buffer but not sure whey it is needed
+			bufSize := 64 * 4096
+			scanner.Buffer(make([]byte, bufSize), bufSize)
 			// Get one line at a time
 			scanner.Split(bufio.ScanLines)
 			counter := 0

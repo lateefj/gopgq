@@ -38,15 +38,15 @@ func NewPgmq(db *sql.DB, prefix string) *Pgmq {
 	return &Pgmq{DB: db, Prefix: prefix, Ttl: 0 * time.Millisecond, exit: false, Mutex: &sync.RWMutex{}}
 }
 
-// CreateSchema ... builds any required tables
-func (p *Pgmq) CreateSchema() error {
+// Create... builds any required tables
+func (p *Pgmq) Create() error {
 	s := fmt.Sprintf(createSchema, p.Prefix, p.Prefix, p.Prefix, p.Prefix, p.Prefix)
 	_, err := p.DB.Exec(s)
 	return err
 }
 
-// DropSchema ... removes any tables
-func (p *Pgmq) DropSchema() error {
+// Destroy ... removes any tables
+func (p *Pgmq) Destroy() error {
 	s := fmt.Sprintf(dropScrema, p.Prefix, p.Prefix)
 	_, err := p.DB.Exec(s)
 	return err
