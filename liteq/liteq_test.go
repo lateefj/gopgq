@@ -117,8 +117,7 @@ func TestStream(t *testing.T) {
 			count += 1
 		}
 		if count >= size {
-			mq.Exit()
-			close(stream)
+			mq.StopConsumer()
 		}
 	}
 	if count != size {
