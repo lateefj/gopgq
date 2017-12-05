@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	topic = "rcload_"
+	topic             = "rcload_"
+	pgStorageType     = "postgres"
+	sqliteStorageType = "sqlite3"
 )
 
 var (
@@ -32,7 +34,7 @@ var (
 	maxConn          int
 	minNumber        int
 	maxNumber        int
-	mulitplier       int
+	multiplier       int
 	outPath          string
 	inPath           string
 	outFile          *os.File
@@ -95,7 +97,7 @@ func (s *Status) finishedConsuming() {
 
 func init() {
 	user := os.Getenv("USER")
-	pgDefaultDsn = fmt.Sprintf("postgres://%s:@localhost/pgmq?sslmode=disable", user)
+	pgDefaultDsn = fmt.Sprintf("user=%s host=localhost dbname=pgmq sslmode=disable", user)
 	sqliteDefaultDsn = "/tmp/_gq_test.db"
 	flag.StringVar(&storageType, "type", "sqlite3", "Data storage type defaults to 'sqlite3' and 'postgres' is also an option")
 	flag.IntVar(&producerSize, "prod", runtime.NumCPU()/2, "producers")
@@ -104,23 +106,25 @@ func init() {
 	flag.IntVar(&maxConn, "conn", 100, "max database connections")
 	flag.IntVar(&maxNumber, "maxnumb", 1000, "max number of messages to batch")
 	flag.IntVar(&minNumber, "minnumb", 1, "min number of messages to batch")
-	flag.IntVar(&mulitplier, "multiplier", 2, "multiplier")
+	flag.IntVar(&multiplier, "multiplier", 2, "multiplier")
 	flag.StringVar(&outPath, "out", "", "file to output default to stdout")
 	flag.StringVar(&inPath, "in", "", "file to input default to stdin")
 }
 
 func db() (*sql.DB, error) {
 	d := dsn
-	if storageType == "sqlite3" {
+	switch storageType {
+	case sqliteStorageType:
 		if dsn == "" {
 			d = sqliteDefaultDsn
 		}
-	}
 
-	if storageType == "postgres" {
+	case pgStorageType:
 		if dsn == "" {
 			d = pgDefaultDsn
 		}
+	default:
+		log.Fatalf("Unknown storage type %s", storageType)
 	}
 
 	return conndb(storageType, d)
@@ -131,7 +135,7 @@ func conndb(t, d string) (*sql.DB, error) {
 }
 
 func newmq(db *sql.DB) gq.MQ {
-	if storageType == "pg" {
+	if storageType == pgStorageType {
 		return pgmq.NewPgmq(db, topic)
 	}
 	return liteq.NewLiteq(db, topic)
@@ -234,11 +238,11 @@ func main() {
 	} else {
 		inFile = os.Stdin
 	}
-	fmt.Printf("Producers %d consumers %d message min number %d max number %d mulitplier %d \n", producerSize, consumerSize, minNumber, maxNumber, mulitplier)
+	fmt.Printf("Producers %d consumers %d message min number %d max number %d multiplier %d \n", producerSize, consumerSize, minNumber, maxNumber, multiplier)
 
 	writer := csv.NewWriter(outFile)
 	writer.Write([]string{"type", "total_messages", "elapsed_seconds", "messages_per_second"})
-	for messageSize := minNumber; messageSize <= maxNumber; messageSize = messageSize * mulitplier {
+	for messageSize := minNumber; messageSize <= maxNumber; messageSize = messageSize * multiplier {
 		status = NewStatus()
 		func() {
 			defer func() {
@@ -258,7 +262,10 @@ func main() {
 			q := newmq(db)
 			q.Destroy()
 
-			q.Create()
+			err = q.Create()
+			if err != nil {
+				log.Fatalf("Failed to create schema %s", err)
+			}
 
 			// Destroy when done
 			defer q.Destroy()
