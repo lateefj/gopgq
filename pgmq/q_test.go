@@ -29,16 +29,16 @@ func setup() *Pgmq {
 	return NewPgmq(db, "test_")
 }
 func cleanup(mq *Pgmq) {
-	mq.DropSchema()
+	mq.Destroy()
 }
 func TestSchema(t *testing.T) {
 	// t.Fatal("not implemented")
 	mq := setup()
-	err := mq.CreateSchema()
+	err := mq.Create()
 	if err != nil {
 		t.Fatalf("Could not create schema %s", err)
 	}
-	err = mq.DropSchema()
+	err = mq.Destroy()
 	if err != nil {
 		t.Fatalf("Could not drop schema %s", err)
 	}
@@ -47,12 +47,12 @@ func TestSchema(t *testing.T) {
 func TestPublishConsume(t *testing.T) {
 	// t.Fatal("not implemented")
 	mq := setup()
-	err := mq.CreateSchema()
+	err := mq.Create()
 	if err != nil {
 		t.Fatalf("Could not create schema %s", err)
 	}
 	defer func() {
-		err := mq.DropSchema()
+		err := mq.Destroy()
 		if err != nil {
 			t.Fatalf("Could not drop schema %s", err)
 		}
@@ -88,14 +88,13 @@ func TestPublishConsume(t *testing.T) {
 }
 
 func TestStream(t *testing.T) {
-	// t.Fatal("not implemented")
 	mq := setup()
-	err := mq.CreateSchema()
+	err := mq.Create()
 	if err != nil {
 		t.Fatalf("Could not create schema %s", err)
 	}
 	defer func() {
-		err := mq.DropSchema()
+		err := mq.Destroy()
 		if err != nil {
 			t.Fatalf("Could not drop schema %s", err)
 		}
@@ -118,8 +117,7 @@ func TestStream(t *testing.T) {
 			count += 1
 		}
 		if count >= size {
-			mq.Exit()
-			close(stream)
+			mq.StopConsumer()
 		}
 	}
 	if count != size {
@@ -144,12 +142,12 @@ func publishConsumeSize(b *testing.B, size int) {
 	}
 
 	mq := setup()
-	err := mq.CreateSchema()
+	err := mq.Create()
 	if err != nil {
 		b.Fatalf("Could not create schema %s", err)
 	}
 	defer func() {
-		err := mq.DropSchema()
+		err := mq.Destroy()
 		if err != nil {
 			b.Fatalf("Could not drop schema %s", err)
 		}

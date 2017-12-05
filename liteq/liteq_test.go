@@ -138,7 +138,7 @@ func publishConsumeSize(b *testing.B, size int) {
 
 	messages := make([]*gq.Message, size)
 	for i := 0; i < size; i++ {
-		messages[i] = &gq.Message{Payload: []byte("Testing load capacity of a message queue system written in go using Postgresql RDBMS")}
+		messages[i] = &gq.Message{Payload: []byte("Testing load capacity of a message queue system written in go using Sqlite3 RDBMS")}
 	}
 
 	mq := setup()

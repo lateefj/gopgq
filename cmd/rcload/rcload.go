@@ -117,9 +117,9 @@ func db() (*sql.DB, error) {
 		}
 	}
 
-	if storageType == "pg" {
+	if storageType == "postgres" {
 		if dsn == "" {
-			d = sqliteDefaultDsn
+			d = pgDefaultDsn
 		}
 	}
 
