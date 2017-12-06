@@ -115,7 +115,7 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
 	if p.Ttl.Seconds() > 0.0 {
 		q = fmt.Sprintf("OR checkout + $2 > now()")
 	}
-	q = fmt.Sprintf("%s ORDER BY checkout ASC NULLS FIRST, timestamp ASC FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, payload;", q)
+	q = fmt.Sprintf("%s ORDER BY checkout ASC NULLS FIRST, imestamp ASC FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, payload;", q)
 	//fmt.Printf("%s\n", q)
 	txn, err := p.DB.Begin()
 	if err != nil {
