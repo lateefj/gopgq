@@ -169,6 +169,8 @@ func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]
 						status.incProduced()
 					}
 				}
+
+				//fmt.Printf("Total produced %d\r", status.producedCount())
 			}
 		}(i)
 	}
@@ -188,7 +190,7 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 			q := newmq(db)
 
 			stream := make(chan []*gq.ConsumerMessage, messageSize)
-			go q.Stream(messageSize, stream, 10*time.Millisecond)
+			go q.Stream(messageSize, stream, 50*time.Millisecond)
 			for {
 				select {
 				case consumedMessages, more := <-stream:
@@ -204,6 +206,7 @@ func makeConsumers(wg *sync.WaitGroup, size, messageSize int) {
 					}
 					q.Commit(receipts)
 				case <-time.NewTimer(100 * time.Millisecond).C:
+					//fmt.Printf("Consumer timeout... \n")
 				}
 
 				// If we have consumed all the messages then exit

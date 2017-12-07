@@ -1,9 +1,11 @@
 package pgmq
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/lateefj/gq"
@@ -11,18 +13,22 @@ import (
 )
 
 var createSchema = `
-CREATE SEQUENCE IF NOT EXISTS %sq_id_seq;
-CREATE TABLE IF NOT EXISTS %sq (
-	id INT8 NOT NULL DEFAULT nextval('%sq_id_seq') PRIMARY KEY,
+CREATE SEQUENCE IF NOT EXISTS {{.TableName}}q_id_seq;
+CREATE TABLE IF NOT EXISTS {{.TableName}}q (
+	id INT8 NOT NULL DEFAULT nextval('{{.TableName}}q_id_seq') PRIMARY KEY,
 	timestamp TIMESTAMP NOT NULL DEFAULt now(),
 	checkout TIMESTAMP,
 	payload BYTEA
 );
-CREATE INDEX IF NOT EXISTS %sq_timestamp_idx ON %sq (checkout ASC NULLS FIRST, timestamp ASC);
+CREATE INDEX IF NOT EXISTS {{.TableName}}q_timestamp_idx ON {{.TableName}}q (checkout ASC NULLS FIRST, timestamp ASC);
+ALTER TABLE {{.TableName}}q SET (autovacuum_vacuum_scale_factor = 0.0);
+ALTER TABLE {{.TableName}}q SET (autovacuum_vacuum_threshold = 250000);
+ALTER TABLE {{.TableName}}q SET (autovacuum_analyze_scale_factor = 0.0);
+ALTER TABLE {{.TableName}}q SET (autovacuum_analyze_threshold = 50000);
 `
 var dropScrema = `
-DROP TABLE IF EXISTS %sq;
-DROP SEQUENCE IF EXISTS %sq_id_seq;
+DROP TABLE IF EXISTS {{.TableName}}q;
+DROP SEQUENCE IF EXISTS {{.TableName}}q_id_seq;
 `
 
 // Pgmq ... Structure for holding message
@@ -40,15 +46,33 @@ func NewPgmq(db *sql.DB, prefix string) *Pgmq {
 
 // Create... builds any required tables
 func (p *Pgmq) Create() error {
-	s := fmt.Sprintf(createSchema, p.Prefix, p.Prefix, p.Prefix, p.Prefix, p.Prefix)
-	_, err := p.DB.Exec(s)
+	d := struct{ TableName string }{
+		TableName: p.Prefix,
+	}
+
+	t := template.Must(template.New("create_table").Parse(createSchema))
+	var b bytes.Buffer
+	err := t.Execute(&b, d)
+	if err != nil {
+		return err
+	}
+	_, err = p.DB.Exec(b.String())
 	return err
 }
 
 // Destroy ... removes any tables
 func (p *Pgmq) Destroy() error {
-	s := fmt.Sprintf(dropScrema, p.Prefix, p.Prefix)
-	_, err := p.DB.Exec(s)
+	d := struct{ TableName string }{
+		TableName: p.Prefix,
+	}
+
+	t := template.Must(template.New("drop_table").Parse(dropScrema))
+	var b bytes.Buffer
+	err := t.Execute(&b, d)
+	if err != nil {
+		return err
+	}
+	_, err = p.DB.Exec(b.String())
 	return err
 }
 
@@ -115,7 +139,7 @@ func (p *Pgmq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
 	if p.Ttl.Seconds() > 0.0 {
 		q = fmt.Sprintf("OR checkout + $2 > now()")
 	}
-	q = fmt.Sprintf("%s ORDER BY checkout ASC NULLS FIRST, imestamp ASC FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, payload;", q)
+	q = fmt.Sprintf("%s ORDER BY checkout ASC NULLS FIRST, timestamp ASC FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, payload;", q)
 	//fmt.Printf("%s\n", q)
 	txn, err := p.DB.Begin()
 	if err != nil {
@@ -169,7 +193,7 @@ func (p *Pgmq) Stream(size int, messages chan []*gq.ConsumerMessage, pause time.
 			}
 			messages <- ms
 		}
-		// Breather so not just infinate loop of queries
+		// Breather so not just infinite loop of queries
 		time.Sleep(pause)
 	}
 }
