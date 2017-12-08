@@ -12,6 +12,8 @@ import (
 	pq "github.com/lib/pq" // Postgresql Driver
 )
 
+// TODO: Need a way to find the optimal vacuum threshold / analyze thresholds based on
+// message payload
 var createSchema = `
 CREATE SEQUENCE IF NOT EXISTS {{.TableName}}q_id_seq;
 CREATE TABLE IF NOT EXISTS {{.TableName}}q (
