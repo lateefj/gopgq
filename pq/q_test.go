@@ -1,4 +1,4 @@
-package pgmq
+package pq
 
 import (
 	"database/sql"
