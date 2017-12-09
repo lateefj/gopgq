@@ -6,7 +6,7 @@ Memory: 24 Gig
 Drive: MKNSSDTR480GB
 
 
-gopgmq Go Benchmark Run 30s
+pq Go Benchmark Run 30s
 ```````````````````````````
 
 cmd::
@@ -60,3 +60,11 @@ output::
 1,000        21,598              12,310
 10,000       37,417              10,116
 ============ =================== ===================
+
+
+Setup
+-----
+
+cmd::
+
+  echo "CREATE DATABASE pq;" | psql template1

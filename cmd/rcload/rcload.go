@@ -15,7 +15,7 @@ import (
 
 	"github.com/lateefj/gq"
 	"github.com/lateefj/gq/liteq"
-	"github.com/lateefj/gq/pgmq"
+	"github.com/lateefj/gq/pq"
 	_ "github.com/lib/pq"           // Postgresql Driver
 	_ "github.com/mattn/go-sqlite3" // Sqlite3 Driver
 )
@@ -97,7 +97,7 @@ func (s *Status) finishedConsuming() {
 
 func init() {
 	user := os.Getenv("USER")
-	pgDefaultDsn = fmt.Sprintf("user=%s host=localhost dbname=pgmq sslmode=disable", user)
+	pgDefaultDsn = fmt.Sprintf("user=%s host=localhost dbname=pq sslmode=disable", user)
 	sqliteDefaultDsn = "/tmp/_gq_test.db"
 	flag.StringVar(&storageType, "type", "sqlite3", "Data storage type defaults to 'sqlite3' and 'postgres' is also an option")
 	flag.IntVar(&producerSize, "prod", runtime.NumCPU()/2, "producers")
@@ -136,7 +136,7 @@ func conndb(t, d string) (*sql.DB, error) {
 
 func newmq(db *sql.DB) gq.MQ {
 	if storageType == pgStorageType {
-		return pgmq.NewPgmq(db, topic)
+		return pq.NewPgmq(db, topic)
 	}
 	return liteq.NewLiteq(db, topic)
 }
@@ -222,11 +222,13 @@ func main() {
 	// Close the output file
 	flag.Parse()
 	var err error
+	writeFileHeader := false
 	if outPath != "" {
 		if _, err := os.Stat(outPath); os.IsNotExist(err) {
-			outFile, err = os.OpenFile(outPath, os.O_APPEND|os.O_WRONLY, 0655)
+			outFile, err = os.Create(outPath)
+			writeFileHeader = true
 		} else {
-			outFile, err = os.Open(outPath)
+			outFile, err = os.OpenFile(outPath, os.O_APPEND|os.O_WRONLY, 0600)
 		}
 		if err != nil {
 			log.Fatalf("Failed to open output file %s error %s", outPath, err)
@@ -243,8 +245,12 @@ func main() {
 	}
 	fmt.Printf("Producers %d consumers %d message min number %d max number %d multiplier %d \n", producerSize, consumerSize, minNumber, maxNumber, multiplier)
 
+	record_time := time.Now().Format(time.UnixDate)
 	writer := csv.NewWriter(outFile)
-	writer.Write([]string{"type", "total_messages", "elapsed_seconds", "messages_per_second"})
+	defer writer.Flush()
+	if writeFileHeader {
+		writer.Write([]string{"timestamp", "input_file", "storage_type", "record_type", "total_messages", "elapsed_seconds", "messages_per_second"})
+	}
 	for messageSize := minNumber; messageSize <= maxNumber; messageSize = messageSize * multiplier {
 		status = NewStatus()
 		func() {
@@ -312,11 +318,15 @@ func main() {
 			total := fmt.Sprintf("%d", totalMessages)
 			runtimeSeconds := fmt.Sprintf("%f", diff.Seconds())
 			messagesPerSecond := fmt.Sprintf("%f", float64(totalMessages)/diff.Seconds())
-			fmt.Printf("Batch size %d producered %d Total comments: %s Elapsed Seconds: %s produced %s comments per second \n", messageSize, status.producedCount(), total, runtimeSeconds, messagesPerSecond)
-			err = writer.Write([]string{"producer", total, runtimeSeconds, messagesPerSecond})
+			fmt.Printf("Batch size %d produced %d Total comments: %s Elapsed Seconds: %s produced %s comments per second \n", messageSize, status.producedCount(), total, runtimeSeconds, messagesPerSecond)
+			row := []string{record_time, inPath, storageType, "producer", total, runtimeSeconds, messagesPerSecond}
+			err = writer.Write(row)
 			if err != nil {
-				log.Printf("csv writer failure %s\n", err)
+				log.Printf("csv writer producer failure %s\n", err)
+			} else {
+				writer.Flush()
 			}
+
 			// Wait for the consumers to finish
 			//fmt.Printf("Waiting on consumers \n")
 			consumerWg.Wait()
@@ -330,12 +340,15 @@ func main() {
 			runtimeSeconds = fmt.Sprintf("%f", diff.Seconds())
 			messagesPerSecond = fmt.Sprintf("%f", float64(totalMessages)/diff.Seconds())
 			fmt.Printf("Batch size %d Total processed comments: %s Elapsed Seconds: %s at %s comments per second \n", messageSize, total, runtimeSeconds, messagesPerSecond)
-			err = writer.Write([]string{"consumer", total, runtimeSeconds, messagesPerSecond})
+			row = []string{record_time, inPath, storageType, "producer", total, runtimeSeconds, messagesPerSecond}
+			err = writer.Write(row)
 			if err != nil {
-				log.Printf("csv writer failure %s\n", err)
+				log.Printf("csv writer consumer failure %s\n", err)
+			} else {
+				writer.Flush()
 			}
+
 			time.Sleep(10 * time.Second)
 		}()
 	}
-	outFile.Close()
 }
