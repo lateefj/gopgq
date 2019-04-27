@@ -8,10 +8,16 @@ import (
 	"time"
 
 	"github.com/lateefj/gq"
+
+	// sqlite3 database package impoart
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var createSchema = `
+// TimeWithMsSqlite ... Special constant to get a time with milliseconds. This is helpful for checkout as the timeout might be sub second
+const TimeWithMsSqlite = "STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')"
+
+var (
+	createSchema = `
 CREATE TABLE IF NOT EXISTS %sq (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -20,25 +26,25 @@ CREATE TABLE IF NOT EXISTS %sq (
 );
 CREATE INDEX IF NOT EXISTS %sq_timestamp_idx ON %sq (checkout ASC, timestamp ASC);
 `
-var dropScrema = `
+	dropScrema = `
 DROP TABLE IF EXISTS %sq;
 `
+)
 
 // Liteq Structure for sqlite
 type Liteq struct {
 	DB     *sql.DB
 	Prefix string
-	Ttl    time.Duration
+	TTL    time.Duration
 	exit   bool
-	Mutex  *sync.RWMutex
-}
-
-func NewLiteq(db *sql.DB, prefix string) *Liteq {
-	return &Liteq{DB: db, Prefix: prefix, Ttl: 0 * time.Millisecond, exit: false, Mutex: &sync.RWMutex{}}
+	mutex  *sync.RWMutex
 }
 
 // Create ... builds any required tables
 func (l *Liteq) Create() error {
+	if l.mutex == nil {
+		l.mutex = &sync.RWMutex{}
+	}
 	s := fmt.Sprintf(createSchema, l.Prefix, l.Prefix, l.Prefix)
 	_, err := l.DB.Exec(s)
 	return err
@@ -51,15 +57,17 @@ func (l *Liteq) Destroy() error {
 	return err
 }
 
+// StopConsumer ... Stop consuming messages
 func (l *Liteq) StopConsumer() {
-	l.Mutex.Lock()
+	l.mutex.Lock()
 	l.exit = true
-	l.Mutex.Unlock()
+	l.mutex.Unlock()
 }
 
+// Exit ...
 func (l *Liteq) Exit() bool {
-	l.Mutex.RLock()
-	defer l.Mutex.RUnlock()
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
 	return l.exit
 }
 
@@ -87,8 +95,9 @@ func (l *Liteq) Publish(messages []*gq.Message) error {
 	return err
 }
 
+// Commit ... Removes any messages that bave been comsusumed by the b
 func (l *Liteq) Commit(recipts []*gq.Receipt) error {
-	deleteQuery := fmt.Sprintf("DELETE FROM %sq WHERE id = IN(?)", l.Prefix)
+	deleteQuery := fmt.Sprintf("DELETE FROM %sq WHERE id IN(?)", l.Prefix)
 	deleteStmt, err := l.DB.Prepare(deleteQuery)
 	if err != nil {
 		return err
@@ -111,8 +120,8 @@ func (l *Liteq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
 	// Find
 	q := fmt.Sprintf("SELECT id, payload FROM %sq WHERE checkout IS null", l.Prefix)
 	// If there is a TTL then checkout messages that have expired
-	if l.Ttl.Seconds() > 0.0 {
-		q = fmt.Sprintf("OR checkout + $2 > DATETIME('now')")
+	if l.TTL.Seconds() > 0.0 {
+		q = fmt.Sprintf("%s OR DATETIME(checkout,  '%f second') < %s", q, l.TTL.Seconds(), TimeWithMsSqlite)
 	}
 	// Order and limit
 	q = fmt.Sprintf("%s ORDER BY checkout ASC, timestamp ASC LIMIT $1;", q)
@@ -130,12 +139,7 @@ func (l *Liteq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
 
 	var rows *sql.Rows
 
-	// TTL queries takes an extra param
-	if l.Ttl.Seconds() > 0.0 {
-		rows, err = stmt.Query(size, l.Ttl)
-	} else {
-		rows, err = stmt.Query(size)
-	}
+	rows, err = stmt.Query(size)
 	if err != nil {
 		return ms, err
 	}
@@ -151,7 +155,7 @@ func (l *Liteq) ConsumeBatch(size int) ([]*gq.ConsumerMessage, error) {
 	}
 
 	// Query any messages that have not been checked out
-	uq := fmt.Sprintf("UPDATE %sq SET checkout = DATETIME('now') WHERE id IN (?);", l.Prefix)
+	uq := fmt.Sprintf("UPDATE %sq SET checkout = %s WHERE id IN (?);", l.Prefix, TimeWithMsSqlite)
 
 	update, err := l.DB.Prepare(uq)
 	if err != nil {

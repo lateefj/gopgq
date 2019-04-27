@@ -2,7 +2,6 @@ package liteq
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -29,7 +28,7 @@ func init() {
 }
 
 func setup() *Liteq {
-	return NewLiteq(db, "test_")
+	return &Liteq{DB: db, Prefix: "test_"}
 }
 func cleanup(mq *Liteq) {
 	mq.Destroy()
@@ -67,13 +66,15 @@ func TestPublishConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to consumer %s", err)
 	}
-	fmt.Printf("Returned %d messages \n", len(consumedMessages))
 	count := 0
 	for j, m := range consumedMessages {
-		count += 1
+		count++
 		recipts[j] = &gq.Receipt{Id: m.Id, Success: true}
 	}
-	mq.Commit(recipts)
+	err = mq.Commit(recipts)
+	if err != nil {
+		t.Fatalf("Error committing the receipts %s", err)
+	}
 	if count != size {
 		t.Errorf("Expected %d message however got %d", size, count)
 	}
@@ -84,10 +85,55 @@ func TestPublishConsume(t *testing.T) {
 	if len(consumedMessages) != 0 {
 		t.Errorf("Failed to have consumed message of 0 was %d", len(consumedMessages))
 	}
+
 }
 
-func TestStream(t *testing.T) {
-	// t.Fatal("not implemented")
+// Test timeout makes a message able to be consumed again
+func TestConsumeTimeout(t *testing.T) {
+	mq := setup()
+	err := mq.Create()
+	if err != nil {
+		t.Fatalf("Could not create schema %s", err)
+	}
+	defer cleanup(mq)
+
+	messages := []*gq.Message{&gq.Message{Payload: []byte("test")}}
+	err = mq.Publish(messages)
+	if err != nil {
+		t.Fatalf("Failed to publish %s", err)
+	}
+	size := len(messages)
+	recipts := make([]*gq.Receipt, size)
+	timeouDuration := 1 * time.Millisecond
+	mq.TTL = timeouDuration
+
+	firstBatch, err := mq.ConsumeBatch(size)
+	if err != nil {
+		t.Fatalf("Failed to consumer first batch %s", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	secondBatch, err := mq.ConsumeBatch(size)
+	if err != nil {
+		t.Fatalf("Failed to consumer second batch %s", err)
+	}
+	if len(firstBatch) != len(secondBatch) {
+		t.Fatalf("Expect first batch size %d to be same as second batch %d", len(firstBatch), len(secondBatch))
+	}
+	for j, m := range secondBatch {
+		recipts[j] = &gq.Receipt{Id: m.Id, Success: true}
+	}
+	err = mq.Commit(recipts)
+	if err != nil {
+		t.Fatalf("Error committing the receipts %s", err)
+	}
+
+}
+
+// Test the lifecycle of the stream
+//  1. Append
+//  2. Consume
+//  3. Commit (delete)
+func TestStreamLifecycle(t *testing.T) {
 	mq := setup()
 	err := mq.Create()
 	if err != nil {
@@ -114,7 +160,7 @@ func TestStream(t *testing.T) {
 	for group := range stream {
 		for _, m := range group {
 			recipts[count] = &gq.Receipt{Id: m.Id, Success: true}
-			count += 1
+			count++
 		}
 		if count >= size {
 			mq.StopConsumer()
