@@ -1,7 +1,7 @@
 =====
-gopgq
+gq
 =====
 
-Message queue for Postgresql written in Go
+Message queue for experiments written in Go.
 
 

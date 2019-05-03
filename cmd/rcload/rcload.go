@@ -138,7 +138,9 @@ func newmq(db *sql.DB) gq.MQ {
 	if storageType == pgStorageType {
 		return pq.NewPgmq(db, topic)
 	}
-	return liteq.NewLiteq(db, topic)
+	q := &liteq.Liteq{DB: db, Prefix: topic}
+	q.Create()
+	return q
 }
 func makeProducers(wg *sync.WaitGroup, size, messageSize int, comments chan [][]byte) {
 	for i := 0; i < size; i++ {
